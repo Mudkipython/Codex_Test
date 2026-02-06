@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import argparse
 import json
-
-from starbucks_sales_ml.config import REPORTS_DIR
 from pathlib import Path
 
+from starbucks_sales_ml.config import REPORTS_DIR
 from starbucks_sales_ml.data import ensure_dataset
 from starbucks_sales_ml.modeling import train_and_evaluate, tune_lightgbm
 

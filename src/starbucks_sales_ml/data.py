@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from starbucks_sales_ml.config import DATA_DIR, PROCESSED_DATA_FILE, RAW_DATA_FILE, RANDOM_SEED
+from starbucks_sales_ml.config import DATA_DIR, PROCESSED_DATA_FILE, RANDOM_SEED, RAW_DATA_FILE
 
 
 @dataclass(frozen=True)

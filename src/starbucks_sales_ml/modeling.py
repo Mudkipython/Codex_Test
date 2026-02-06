@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypedDict
 
 import numpy as np
 import pandas as pd
@@ -15,7 +15,7 @@ from sklearn.model_selection import RandomizedSearchCV, TimeSeriesSplit
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 
-from starbucks_sales_ml.config import MODELS_DIR, REPORTS_DIR, RANDOM_SEED
+from starbucks_sales_ml.config import MODELS_DIR, RANDOM_SEED, REPORTS_DIR
 
 
 @dataclass(frozen=True)
@@ -25,7 +25,9 @@ class SplitConfig:
     random_seed: int = RANDOM_SEED
 
 
-def _split_time(df: pd.DataFrame, cfg: SplitConfig) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def _split_time(
+    df: pd.DataFrame, cfg: SplitConfig
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     df_sorted = df.sort_values("date").reset_index(drop=True)
     n = len(df_sorted)
     n_test = int(n * cfg.test_size)
@@ -46,7 +48,17 @@ def _build_preprocessor(categorical: list[str], numeric: list[str]) -> ColumnTra
     )
 
 
-def _metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, float]:
+class Metrics(TypedDict):
+    rmse: float
+    mae: float
+    mape: float
+
+
+class BestModelMetrics(Metrics):
+    name: str
+
+
+def _metrics(y_true: np.ndarray, y_pred: np.ndarray) -> Metrics:
     rmse = mean_squared_error(y_true, y_pred, squared=False)
     mae = mean_absolute_error(y_true, y_pred)
     mape = float(np.mean(np.abs((y_true - y_pred) / np.clip(y_true, 1.0, None))) * 100)
@@ -67,7 +79,9 @@ def _feature_columns() -> tuple[list[str], list[str]]:
     return categorical, numeric
 
 
-def train_and_evaluate(df: pd.DataFrame, *, include_lightgbm: bool = False) -> dict[str, dict[str, float]]:
+def train_and_evaluate(
+    df: pd.DataFrame, *, include_lightgbm: bool = False
+) -> dict[str, Metrics | BestModelMetrics]:
     categorical, numeric = _feature_columns()
 
     train_df, val_df, test_df = _split_time(df, SplitConfig())
@@ -100,7 +114,7 @@ def train_and_evaluate(df: pd.DataFrame, *, include_lightgbm: bool = False) -> d
             random_state=RANDOM_SEED,
         )
 
-    results: dict[str, dict[str, float]] = {}
+    results: dict[str, Metrics | BestModelMetrics] = {}
     best_model_name = ""
     best_rmse = float("inf")
     best_pipeline: Pipeline | None = None
@@ -124,10 +138,10 @@ def train_and_evaluate(df: pd.DataFrame, *, include_lightgbm: bool = False) -> d
         raise RuntimeError("No model trained.")
 
     test_pred = best_pipeline.predict(X_test)
-    results["best_model"] = {
-        "name": best_model_name,
+    results["best_model"] = BestModelMetrics(
+        name=best_model_name,
         **_metrics(y_test, test_pred),
-    }
+    )
 
     dump(best_pipeline, MODELS_DIR / "best_model.joblib")
 
@@ -142,7 +156,11 @@ def train_and_evaluate(df: pd.DataFrame, *, include_lightgbm: bool = False) -> d
     return results
 
 
-def tune_lightgbm(df: pd.DataFrame) -> dict[str, dict[str, float]]:
+class TunedMetrics(Metrics):
+    best_params: dict[str, object]
+
+
+def tune_lightgbm(df: pd.DataFrame) -> dict[str, TunedMetrics]:
     categorical, numeric = _feature_columns()
     train_df, val_df, test_df = _split_time(df, SplitConfig())
     train_val = pd.concat([train_df, val_df], ignore_index=True)
@@ -184,11 +202,11 @@ def tune_lightgbm(df: pd.DataFrame) -> dict[str, dict[str, float]]:
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     dump(best_pipeline, MODELS_DIR / "lightgbm_tuned.joblib")
 
-    results = {
-        "lightgbm_tuned": {
+    results: dict[str, TunedMetrics] = {
+        "lightgbm_tuned": TunedMetrics(
             **_metrics(y_test, test_pred),
-            "best_params": search.best_params_,
-        }
+            best_params=search.best_params_,
+        )
     }
 
     feature_names = best_pipeline.named_steps["prep"].get_feature_names_out()
