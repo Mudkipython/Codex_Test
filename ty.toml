@@ -1,5 +1,0 @@
-[environment]
-python-version = "3.10"
-
-[rules]
-unresolved-import = "ignore"
